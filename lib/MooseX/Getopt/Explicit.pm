@@ -1,9 +1,6 @@
 ## no critic (RequireUseStrict)
 package MooseX::Getopt::Explicit;
-{
-  $MooseX::Getopt::Explicit::VERSION = '0.02';
-}
-
+$MooseX::Getopt::Explicit::VERSION = '0.03';
 ## use critic (RequireUseStrict)
 use Moose::Role;
 
@@ -21,17 +18,17 @@ around _compute_getopt_attrs => sub {
 
 1;
 
-
-
 =pod
+
+=encoding UTF-8
 
 =head1 NAME
 
-MooseX::Getopt::Explicit - MooseX::Getopt, but without implicit option generation
+MooseX::Getopt::Explicit - MooseX::Getopt, but without implicit option generation [DEPRECATED]
 
 =head1 VERSION
 
-version 0.02
+version 0.03
 
 =head1 SYNOPSIS
 
@@ -62,6 +59,9 @@ order for a command line option to be generated.
 
 L<MooseX::Getopt>
 
+L<MooseX::Getopt::Strict> - when using this, give attributes
+a C<Getopt> metaclass if you want it to get a command-line option.
+
 =head1 AUTHOR
 
 Rob Hoelz <rob@hoelz.ro>
@@ -84,8 +84,7 @@ feature.
 
 =cut
 
-
 __END__
 
-# ABSTRACT: MooseX::Getopt, but without implicit option generation
+# ABSTRACT: MooseX::Getopt, but without implicit option generation [DEPRECATED]
 

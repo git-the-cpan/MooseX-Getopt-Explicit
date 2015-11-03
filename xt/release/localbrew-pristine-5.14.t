@@ -4,11 +4,30 @@ use strict;
 use warnings;
 
 use FindBin;
+use File::Copy qw(copy);
 use File::Spec;
 use File::Temp;
 use Test::More;
 
-delete @ENV{qw/AUTHOR_TESTING RELEASE_TESTING/};
+sub copy_log_file {
+    my ( $home ) = @_;
+    my $log_file = File::Spec->catfile($home, '.cpanm', 'build.log');
+    my $tempfile = File::Temp->new(
+        SUFFIX => '.log',
+        UNLINK => 0,
+    );
+    copy($log_file, $tempfile->filename);
+    diag("For details, please consult $tempfile")
+}
+
+sub is_dist_root {
+    my ( @path ) = @_;
+
+    return -e File::Spec->catfile(@path, 'Makefile.PL') ||
+           -e File::Spec->catfile(@path, 'Build.PL');
+}
+
+delete @ENV{qw/AUTHOR_TESTING RELEASE_TESTING PERL5LIB/};
 
 unless($ENV{'PERLBREW_ROOT'}) {
     plan skip_all => "Environment variable 'PERLBREW_ROOT' not found";
@@ -27,7 +46,23 @@ chomp $cpanm_path;
 my $perlbrew_bin = File::Spec->catdir($ENV{'PERLBREW_ROOT'}, 'perls',
     $brew, 'bin');
 
+my $perlbrew_path = $ENV{'PATH'};
+if(my $local_lib_root = $ENV{'PERL_LOCAL_LIB_ROOT'}) {
+    my @path = File::Spec->path;
+
+    while(@path && $path[0] =~ /^$local_lib_root/) {
+        shift @path;
+    }
+
+    if($^O eq 'MSWin32') {
+        $perlbrew_path = join(';', @path);
+    } else {
+        $perlbrew_path = join(':', @path);
+    }
+}
+
 my ( $env, $status ) = do {
+    local $ENV{'PATH'} = $perlbrew_path;
     local $ENV{'SHELL'} = '/bin/bash'; # fool perlbrew
     ( scalar(qx(perlbrew env $brew)), $? )
 };
@@ -52,26 +87,47 @@ foreach my $line (@lines) {
     }
 }
 
-$ENV{'PATH'} = join(':', @ENV{qw/PERLBREW_PATH PATH_WITHOUT_PERLBREW/});
+my $pristine_path = do {
+    local $ENV{'PATH'} = $perlbrew_path;
+    qx(perlbrew display-pristine-path);
+};
+chomp $pristine_path;
+$ENV{'PATH'} = join(':', $ENV{'PERLBREW_PATH'}, $pristine_path);
 
 plan tests => 1;
 
-my $tmpdir = File::Temp->newdir;
+my $tmpdir  = File::Temp->newdir;
+my $tmphome = File::Temp->newdir;
 
 my $pid = fork;
-if($pid) {
-    unless(defined $pid) {
-        fail "Forking failed!";
-        exit 1;
-    }
+if(!defined $pid) {
+    fail "Forking failed!";
+    exit 1;
+} elsif($pid) {
     waitpid $pid, 0;
-    ok !$?, "cpanm should successfully install your dist with no issues";
+    ok !$?, "cpanm should successfully install your dist with no issues" or copy_log_file($tmphome->dirname);
 } else {
-    close STDOUT;
-    close STDERR;
+    open STDIN, '<', File::Spec->devnull;
+    open STDOUT, '>', File::Spec->devnull;
+    open STDERR, '>', File::Spec->devnull;
 
-    chdir File::Spec->catdir($FindBin::Bin,
-        File::Spec->updir, File::Spec->updir); # exit test directory
+    my @path = File::Spec->splitdir($FindBin::Bin);
 
-    exec 'perl', $cpanm_path, '-L', $tmpdir->dirname, '.';
+    while(@path && !is_dist_root(@path)) {
+        pop @path;
+    }
+    unless(@path) {
+        die "Unable to find dist root\n";
+    }
+    chdir File::Spec->catdir(@path); # exit test directory
+
+    # override where cpanm puts its log file
+    $ENV{'HOME'} = $tmphome->dirname;
+
+
+
+    # We use system here instead of exec so that $tmpdir gets cleaned up
+    # after cpanm finishes
+    system 'perl', $cpanm_path, '-L', $tmpdir->dirname, '.';
+    exit($? >> 8);
 }
